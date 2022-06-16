@@ -66,7 +66,7 @@ type Provider interface {
 type ProxyProvider interface {
 	Provider
 	Proxies() []C.Proxy
-	Touch()
+	Touch() []C.Proxy
 	HealthCheck()
 	Version() uint
 }

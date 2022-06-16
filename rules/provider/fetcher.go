@@ -21,7 +21,7 @@ type parser = func([]byte) (interface{}, error)
 type fetcher struct {
 	name      string
 	vehicle   P.Vehicle
-	updatedAt *time.Time
+	updatedAt time.Time
 	ticker    *time.Ticker
 	done      chan struct{}
 	hash      [16]byte
@@ -55,7 +55,7 @@ func (f *fetcher) Initial() (interface{}, error) {
 	if stat, fErr := os.Stat(f.vehicle.Path()); fErr == nil {
 		buf, err = ioutil.ReadFile(f.vehicle.Path())
 		modTime := stat.ModTime()
-		f.updatedAt = &modTime
+		f.updatedAt = modTime
 		hasLocal = true
 		if f.interval != 0 && modTime.Add(f.interval).Before(time.Now()) {
 			forceUpdate = true
@@ -122,7 +122,7 @@ func (f *fetcher) Update() (interface{}, bool, error) {
 	now := time.Now()
 	hash := md5.Sum(buf)
 	if bytes.Equal(f.hash[:], hash[:]) {
-		f.updatedAt = &now
+		f.updatedAt = now
 		os.Chtimes(f.vehicle.Path(), now, now)
 		return nil, true, nil
 	}
@@ -138,14 +138,14 @@ func (f *fetcher) Update() (interface{}, bool, error) {
 		}
 	}
 
-	f.updatedAt = &now
+	f.updatedAt = now
 	f.hash = hash
 
 	return rules, false, nil
 }
 
 func (f *fetcher) Destroy() error {
-	if f.ticker != nil {
+	if f.interval > 0 {
 		f.done <- struct{}{}
 	}
 	return nil
