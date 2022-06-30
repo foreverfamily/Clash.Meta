@@ -47,10 +47,8 @@ default:
 	go build -v -o prebuild ./cmd/prebuild
 	go build -v -o build ./cmd/build
 	./prebuild
-	./build -v -o naive-go -tags static -trimpath -ldflags '-X "github.com/Dreamacro/clash/constant.Version=$(VERSION)" \
-															-X "github.com/Dreamacro/clash/constant.BuildTime=$(BUILDTIME)" \
-															-s -w -buildid=' ./
-	./llvm/bin/llvm-strip ./naive-go
+	./build -v -o clash -tags static -trimpath -ldflags '-X "github.com/Dreamacro/clash/constant.Version=$(VERSION)" -X "github.com/Dreamacro/clash/constant.BuildTime=$(BUILDTIME)" -s -w -buildid=' ./
+	./llvm/bin/llvm-strip ./clash
 
 all:linux-amd64 linux-arm64\
 	darwin-amd64 darwin-arm64\

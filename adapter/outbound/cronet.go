@@ -44,7 +44,7 @@ type CronetOption struct {
 	Headers           map[string]string `proxy:"headers,omitempty"`
 	SkipCertVerify    bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName        string            `proxy:"servername,omitempty"`
-	NetLog            string            `json:"log-net-log"` //TODO
+	NetLog            string            `proxy:"log-net-log"` //TODO
 }
 
 func (c *CronetOption) ExperimentalOptions() *ExperimentalOptions {
@@ -67,15 +67,8 @@ func (c *Cronet) SupportUDP() bool {
 	return false
 }
 
-//func (c *Cronet) ListenPacketContext(con net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
-//
-//	//TODO implement me
-//	panic("implement me")
-//}
-
 // ListenPacketOnStreamConn implements C.ProxyAdapter
 func (c *Cronet) ListenPacketOnStreamConn(con net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
-
 	//TODO implement me
 	panic("implement me")
 }
@@ -113,18 +106,9 @@ func (c *Cronet) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 	return NewConn(con, c), err
 }
 
-//func (c *Cronet) PacketConn(conn net.Conn) net.PacketConn {
-//	return
-//}
-
-func version() string {
-	engine := cronet.NewEngine()
-	defer engine.Destroy()
-	return "libcronet " + engine.Version()
-}
-
 func NewCronet(option CronetOption) (*Cronet, error) {
 	engine := cronet.NewEngine()
+	fmt.Println("libcronet " + engine.Version())
 	runtime.SetFinalizer(engine, func(engine *cronet.Engine) {
 		engine.Shutdown()
 		engine.Destroy()
@@ -135,16 +119,16 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 		log.Fatalln(err.Error())
 	}
 	params.SetExperimentalOptions(string(experimentalOptionsJSON))
-	url := "%//:%s:%s"
+	url := "%s://%s:%s@%s:%s"
 	switch option.Network {
 	case "https", "http":
 		params.SetEnableHTTP2(true)
 		params.SetEnableQuic(false)
-		url = fmt.Sprintf(url, "https", option.ServerName, option.Port)
+		url = fmt.Sprintf(url, "https", option.User, option.PassWord, option.ServerName, option.Port)
 	case "quic":
 		params.SetEnableHTTP2(false)
 		params.SetEnableQuic(true)
-		url = fmt.Sprintf(url, "quic", option.ServerName, option.Port)
+		url = fmt.Sprintf(url, "quic", option.User, option.PassWord, option.ServerName, option.Port)
 	default:
 		log.Fatalln("unknown proxy scheme: %s", option.Network)
 	}
@@ -152,7 +136,6 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 	engine.StartWithParams(params)
 	params.Destroy()
 
-	//TODO
 	if option.NetLog != "" {
 		engine.StartNetLogToFile(option.NetLog, true)
 	}
