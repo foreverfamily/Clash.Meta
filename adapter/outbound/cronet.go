@@ -93,23 +93,22 @@ func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error
 
 func (c *Cronet) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
 	con, err := dialer.DialContext(ctx, "tcp", c.addr, c.Base.DialOptions(opts...)...)
+	defer safeConnClose(con, err)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %w", c.addr, err)
 	}
 	tcpKeepAlive(con)
-	defer safeConnClose(con, err)
 	con, err = c.StreamConn(con, metadata)
 	if err != nil {
 		return nil, err
 	}
-
 	return NewConn(con, c), err
 }
 
 func NewCronet(option CronetOption) (*Cronet, error) {
 	engine := cronet.NewEngine()
 	fmt.Println("libcronet " + engine.Version())
-	runtime.SetFinalizer(engine, func(engine *cronet.Engine) {
+	runtime.SetFinalizer(&engine, func(engine *cronet.Engine) {
 		engine.Shutdown()
 		engine.Destroy()
 	})
@@ -152,6 +151,7 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 		option:        &option,
 		authorization: authorization,
 		url:           url,
+		engine:        engine,
 	}, nil
 
 }
