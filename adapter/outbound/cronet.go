@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"net/url"
 	"runtime"
 	"strconv"
 
@@ -57,6 +58,7 @@ func (c *CronetOption) ExperimentalOptions() *ExperimentalOptions {
 type Cronet struct {
 	*Base
 	engine        cronet.Engine
+	streamEngine  cronet.StreamEngine
 	option        *CronetOption
 	authorization string
 	url           string
@@ -83,7 +85,7 @@ func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error
 	for key, value := range c.option.Headers {
 		headers[key] = value
 	}
-	bidiConn := c.engine.StreamEngine().CreateConn(true, false)
+	bidiConn := c.streamEngine.CreateConn(true, false)
 	err := bidiConn.Start("CONNECT", c.url, headers, 0, false)
 	if err != nil {
 		return nil, E.Cause(err, "start bidi conn")
@@ -93,7 +95,6 @@ func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error
 
 func (c *Cronet) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
 	con, err := dialer.DialContext(ctx, "tcp", c.addr, c.Base.DialOptions(opts...)...)
-	defer safeConnClose(con, err)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %w", c.addr, err)
 	}
@@ -108,28 +109,35 @@ func (c *Cronet) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 func NewCronet(option CronetOption) (*Cronet, error) {
 	engine := cronet.NewEngine()
 	fmt.Println("libcronet " + engine.Version())
-	runtime.SetFinalizer(&engine, func(engine *cronet.Engine) {
-		engine.Shutdown()
-		engine.Destroy()
-	})
 	params := cronet.NewEngineParams()
 	experimentalOptionsJSON, err := json.Marshal(option.ExperimentalOptions())
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 	params.SetExperimentalOptions(string(experimentalOptionsJSON))
-	url := "%s://%s:%s@%s:%s"
+	urlStr := "%s://%s:%s@%s:%d"
 	switch option.Network {
 	case "https", "http":
 		params.SetEnableHTTP2(true)
 		params.SetEnableQuic(false)
-		url = fmt.Sprintf(url, "https", option.User, option.PassWord, option.ServerName, option.Port)
+		urlStr = fmt.Sprintf(urlStr, "https", option.User, option.PassWord, option.ServerName, option.Port)
 	case "quic":
 		params.SetEnableHTTP2(false)
 		params.SetEnableQuic(true)
-		url = fmt.Sprintf(url, "quic", option.User, option.PassWord, option.ServerName, option.Port)
+		urlStr = fmt.Sprintf(urlStr, "quic", option.User, option.PassWord, option.ServerName, option.Port)
 	default:
 		log.Fatalln("unknown proxy scheme: %s", option.Network)
+	}
+
+	proxyURL, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	var proxyAuthorization string
+	if proxyURL.User != nil {
+		password, _ := proxyURL.User.Password()
+		proxyAuthorization = "Basic " + base64.StdEncoding.EncodeToString([]byte(proxyURL.User.Username()+":"+password))
+		proxyURL.User = nil
 	}
 
 	engine.StartWithParams(params)
@@ -138,8 +146,6 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 	if option.NetLog != "" {
 		engine.StartNetLogToFile(option.NetLog, true)
 	}
-
-	authorization := "Basic " + base64.StdEncoding.EncodeToString([]byte(option.User+":"+option.PassWord))
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	return &Cronet{
 		Base: &Base{
@@ -149,9 +155,10 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 			udp:  false,
 		},
 		option:        &option,
-		authorization: authorization,
-		url:           url,
+		authorization: proxyAuthorization,
+		url:           proxyURL.String(),
 		engine:        engine,
+		streamEngine:  engine.StreamEngine(),
 	}, nil
 
 }
