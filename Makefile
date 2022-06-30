@@ -43,6 +43,15 @@ WINDOWS_ARCH_LIST = \
 	windows-arm64 \
     windows-arm32v7
 
+default:
+	go build -v -o prebuild ./cmd/prebuild
+	go build -v -o build ./cmd/build
+	./prebuild
+	./build -v -o naive-go -tags static -trimpath -ldflags '-X "github.com/Dreamacro/clash/constant.Version=$(VERSION)" \
+															-X "github.com/Dreamacro/clash/constant.BuildTime=$(BUILDTIME)" \
+															-s -w -buildid=' ./
+	./llvm/bin/llvm-strip ./naive-go
+
 all:linux-amd64 linux-arm64\
 	darwin-amd64 darwin-arm64\
  	windows-amd64 windows-arm64\

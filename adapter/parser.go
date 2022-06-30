@@ -88,6 +88,13 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 			break
 		}
 		proxy, err = outbound.NewHysteria(*hyOption)
+	case "cronet":
+		cronetOption := &outbound.CronetOption{}
+		err = decoder.Decode(mapping, cronetOption)
+		if err != nil {
+			break
+		}
+		proxy, err = outbound.NewCronet(*cronetOption)
 	default:
 		return nil, fmt.Errorf("unsupport proxy type: %s", proxyType)
 	}
