@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Dreamacro/clash/log"
+	"github.com/sanity-io/litter"
 	"math/rand"
 	"net"
 	"sync"
@@ -146,7 +147,8 @@ func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (ne
 			Conn: info.underlayConn,
 		}
 
-		addr, err := NewAddressFromAddr("tcp", metadata.DstIP.String()+":"+metadata.DstPort)
+		log.Debugln("DialConn: metadata: %s", litter.Sdump(metadata))
+		addr, err := NewAddressFromAddr("tcp", metadata.RemoteAddress())
 		if err != nil {
 			return nil, err
 		}

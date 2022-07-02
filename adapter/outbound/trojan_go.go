@@ -9,7 +9,9 @@ import (
 
 	"github.com/Dreamacro/clash/component/dialer"
 	C "github.com/Dreamacro/clash/constant"
+	"github.com/Dreamacro/clash/log"
 	"github.com/Dreamacro/clash/transport/trojan"
+	"github.com/sanity-io/litter"
 )
 
 type TrojanGO struct {
@@ -108,6 +110,7 @@ func (t *TrojanGO) DialContext(ctx context.Context, metadata *C.Metadata, opts .
 
 // ListenPacketContext implements C.ProxyAdapter
 func (t *TrojanGO) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+	log.Debugln("ListenPacketContext: tcp connection number: %s", litter.Sdump(metadata))
 	var c net.Conn
 	c, err = dialer.DialContext(ctx, "tcp", t.addr, t.Base.DialOptions(opts...)...)
 	if err != nil {
@@ -131,6 +134,7 @@ func (t *TrojanGO) ListenPacketContext(ctx context.Context, metadata *C.Metadata
 
 // ListenPacketOnStreamConn implements C.ProxyAdapter relay
 func (t *TrojanGO) ListenPacketOnStreamConn(c net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	log.Debugln("ListenPacketOnStreamConn: tcp connection number: %s", litter.Sdump(metadata))
 	pc := t.instance.PacketConn(c)
 	return newPacketConn(pc, t), err
 }
