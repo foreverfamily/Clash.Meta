@@ -30,6 +30,7 @@ const (
 	Vmess
 	Vless
 	Trojan
+	TrojanGo
 	Hysteria
 )
 
@@ -162,6 +163,10 @@ func (at AdapterType) String() string {
 		return "Vless"
 	case Trojan:
 		return "Trojan"
+
+	case TrojanGo:
+		return "TrojanGo"
+
 	case Hysteria:
 		return "Hysteria"
 

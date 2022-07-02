@@ -43,6 +43,7 @@ const (
 	// for XTLS
 	commandXRD byte = 0xf0 // XTLS direct mode
 	commandXRO byte = 0xf1 // XTLS origin mode
+	CommandMux byte = 0x7f // mux
 )
 
 type Option struct {
