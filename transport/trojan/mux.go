@@ -27,7 +27,6 @@ type smuxClientInfo struct {
 	id             muxID
 	session        *smux.Session
 	lastActiveTime time.Time
-	underlayConn   net.Conn //muxConn
 }
 
 type MuxTransport struct {
@@ -65,11 +64,9 @@ func (c *MuxTransport) cleanLoop() {
 			for id, info := range c.clientPool {
 				if info.session.IsClosed() {
 					info.session.Close()
-					info.underlayConn.Close()
 					delete(c.clientPool, id)
 				} else if info.session.NumStreams() == 0 && time.Since(info.lastActiveTime) > c.timeout {
 					info.session.Close()
-					info.underlayConn.Close()
 					delete(c.clientPool, id)
 				}
 			}
@@ -79,7 +76,6 @@ func (c *MuxTransport) cleanLoop() {
 			c.clientPoolLock.Lock()
 			for id, info := range c.clientPool {
 				info.session.Close()
-				info.underlayConn.Close()
 				delete(c.clientPool, id)
 			}
 			c.clientPoolLock.Unlock()
@@ -120,7 +116,6 @@ func (c *MuxTransport) newMuxClient(metadata *C.Metadata) (*smuxClientInfo, erro
 	}
 	info := &smuxClientInfo{
 		session:        session,
-		underlayConn:   outcon,
 		id:             id,
 		lastActiveTime: time.Now(),
 	}
@@ -133,7 +128,6 @@ func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (ne
 		stream, err := info.session.OpenStream()
 		info.lastActiveTime = time.Now()
 		if err != nil {
-			info.underlayConn.Close()
 			info.session.Close()
 			delete(c.clientPool, info.id)
 			return nil, err
