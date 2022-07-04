@@ -33,6 +33,3 @@ func (c *simplesocks) Write(payload []byte) (int, error) {
 	}
 	return c.Conn.Write(payload)
 }
-
-//tcp -> tls -> ws -> trojan -> smux -> simplesocks
-//............conn -> outcon -> muxcon -> streamcon -> simplesocks

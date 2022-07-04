@@ -32,7 +32,7 @@ type smuxClientInfo struct {
 
 type MuxTransport struct {
 	clientPoolLock sync.Mutex
-	clientPool     map[muxID]*smuxClientInfo //tls 连接数
+	clientPool     map[muxID]*smuxClientInfo
 	dialFunc       DialFunc
 	option         *OptionGo
 	concurrency    int
@@ -109,14 +109,9 @@ func (c *MuxTransport) newMuxClient(metadata *C.Metadata) (*smuxClientInfo, erro
 		metadata: &Metadata{
 			Command: CommandMux,
 			Address: addr,
-			//Address: &Address{
-			//	DomainName:  "MUX_CONN",
-			//	AddressType: DomainName,
-			//},
 		},
 	}
 
-	//muxCon := newMuxConn(outcon)
 	smuxConfig := smux.DefaultConfig()
 	// smuxConfig.KeepAliveDisabled = true
 	session, err := smux.Client(outcon, smuxConfig)
@@ -143,11 +138,6 @@ func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (ne
 			delete(c.clientPool, info.id)
 			return nil, err
 		}
-		//streamCon := &streamMuxConn{
-		//	rwc:  stream,
-		//	Conn: info.underlayConn,
-		//}
-
 		addr, err := NewAddressFromAddr("tcp", metadata.RemoteAddress())
 		if err != nil {
 			return nil, err
