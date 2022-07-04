@@ -25,7 +25,7 @@ func generateMuxID() muxID {
 
 type smuxClientInfo struct {
 	id             muxID
-	client         *smux.Session
+	session        *smux.Session
 	lastActiveTime time.Time
 	underlayConn   net.Conn //muxConn
 }
@@ -46,7 +46,7 @@ func (c *MuxTransport) Close() error {
 	c.clientPoolLock.Lock()
 	defer c.clientPoolLock.Unlock()
 	for _, info := range c.clientPool {
-		info.client.Close()
+		info.session.Close()
 	}
 	return nil
 }
@@ -63,12 +63,12 @@ func (c *MuxTransport) cleanLoop() {
 		case <-time.After(checkDuration):
 			c.clientPoolLock.Lock()
 			for id, info := range c.clientPool {
-				if info.client.IsClosed() {
-					info.client.Close()
+				if info.session.IsClosed() {
+					info.session.Close()
 					info.underlayConn.Close()
 					delete(c.clientPool, id)
-				} else if info.client.NumStreams() == 0 && time.Since(info.lastActiveTime) > c.timeout {
-					info.client.Close()
+				} else if info.session.NumStreams() == 0 && time.Since(info.lastActiveTime) > c.timeout {
+					info.session.Close()
 					info.underlayConn.Close()
 					delete(c.clientPool, id)
 				}
@@ -78,7 +78,7 @@ func (c *MuxTransport) cleanLoop() {
 		case <-c.ctx.Done():
 			c.clientPoolLock.Lock()
 			for id, info := range c.clientPool {
-				info.client.Close()
+				info.session.Close()
 				info.underlayConn.Close()
 				delete(c.clientPool, id)
 			}
@@ -98,33 +98,34 @@ func (c *MuxTransport) newMuxClient(metadata *C.Metadata) (*smuxClientInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	//addr, err := NewAddressFromAddr("tcp", metadata.DstIP.String()+":"+metadata.DstPort)
-	//if err != nil {
-	//	return nil, err
-	//}
+	addr, err := NewAddressFromAddr("tcp", metadata.RemoteAddress())
+	if err != nil {
+		return nil, err
+	}
 	outcon := &OutboundConn{
 		hexPassword:       hexSha224([]byte(c.option.Password)),
 		headerWrittenOnce: sync.Once{},
 		Conn:              conn,
 		metadata: &Metadata{
 			Command: CommandMux,
-			Address: &Address{
-				DomainName:  "MUX_CONN",
-				AddressType: DomainName,
-			},
+			Address: addr,
+			//Address: &Address{
+			//	DomainName:  "MUX_CONN",
+			//	AddressType: DomainName,
+			//},
 		},
 	}
 
-	muxCon := newMuxConn(outcon)
+	//muxCon := newMuxConn(outcon)
 	smuxConfig := smux.DefaultConfig()
 	// smuxConfig.KeepAliveDisabled = true
-	client, err := smux.Client(muxCon, smuxConfig)
+	session, err := smux.Client(outcon, smuxConfig)
 	if err != nil {
 		return nil, err
 	}
 	info := &smuxClientInfo{
-		client:         client,
-		underlayConn:   muxCon,
+		session:        session,
+		underlayConn:   outcon,
 		id:             id,
 		lastActiveTime: time.Now(),
 	}
@@ -133,27 +134,28 @@ func (c *MuxTransport) newMuxClient(metadata *C.Metadata) (*smuxClientInfo, erro
 }
 
 func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (net.Conn, error) {
-	createNewConn := func(info *smuxClientInfo) (*simplesocks, error) {
-		rwc, err := info.client.Open()
+	createStream := func(info *smuxClientInfo) (*simplesocks, error) {
+		stream, err := info.session.OpenStream()
 		info.lastActiveTime = time.Now()
 		if err != nil {
 			info.underlayConn.Close()
-			info.client.Close()
+			info.session.Close()
 			delete(c.clientPool, info.id)
 			return nil, err
 		}
-		streamCon := &streamMuxConn{
-			rwc:  rwc,
-			Conn: info.underlayConn,
-		}
+		//streamCon := &streamMuxConn{
+		//	rwc:  stream,
+		//	Conn: info.underlayConn,
+		//}
 
-		log.Debugln("DialConn: metadata: %s", litter.Sdump(metadata))
 		addr, err := NewAddressFromAddr("tcp", metadata.RemoteAddress())
 		if err != nil {
 			return nil, err
 		}
+		log.Debugln("DialConn: metadata: %s, SourceAddress: %s, remoteAddress: %s, addr: %s",
+			litter.Sdump(metadata), metadata.SourceAddress(), metadata.RemoteAddress(), litter.Sdump(addr))
 		return &simplesocks{
-			Conn: streamCon,
+			Conn: stream,
 			metadata: &Metadata{
 				Command: CommandTCP,
 				Address: addr,
@@ -164,12 +166,12 @@ func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (ne
 	c.clientPoolLock.Lock()
 	defer c.clientPoolLock.Unlock()
 	for _, info := range c.clientPool {
-		if info.client.IsClosed() {
+		if info.session.IsClosed() {
 			delete(c.clientPool, info.id)
 			continue
 		}
-		if info.client.NumStreams() < c.concurrency || c.concurrency <= 0 {
-			return createNewConn(info)
+		if info.session.NumStreams() < c.concurrency || c.concurrency <= 0 {
+			return createStream(info)
 		}
 	}
 	info, err := c.newMuxClient(metadata)
@@ -177,7 +179,7 @@ func (c *MuxTransport) DialConn(metadata *C.Metadata, opts ...dialer.Option) (ne
 		return nil, err
 	}
 	log.Infoln("DialConn: tcp connection number: %d", len(c.clientPool))
-	return createNewConn(info)
+	return createStream(info)
 }
 
 func NewMuxTransport(ctx context.Context, dialFunc DialFunc, option *OptionGo) (*MuxTransport, error) {

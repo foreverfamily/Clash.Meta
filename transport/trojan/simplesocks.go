@@ -19,9 +19,12 @@ func (c *simplesocks) Metadata() *Metadata {
 func (c *simplesocks) Write(payload []byte) (int, error) {
 	if !c.headerWritten {
 		buf := bytes.NewBuffer(make([]byte, 0, 4096))
-		c.metadata.WriteTo(buf)
+		err := c.metadata.WriteTo(buf)
+		if err != nil {
+			return 0, err
+		}
 		buf.Write(payload)
-		_, err := c.Conn.Write(buf.Bytes())
+		_, err = c.Conn.Write(buf.Bytes())
 		if err != nil {
 			return 0, err
 		}

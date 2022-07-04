@@ -23,7 +23,7 @@ func (r *Metadata) ReadFrom(rr io.Reader) error {
 	if err != nil {
 		return err
 	}
-	r.Command = Command(byteBuf[0])
+	r.Command = byteBuf[0]
 	r.Address = new(Address)
 	return r.Address.ReadFrom(rr)
 }
@@ -35,7 +35,9 @@ func (r *Metadata) WriteTo(w io.Writer) error {
 		return err
 	}
 	// use tcp by default
-	r.Address.NetworkType = "tcp"
+	if r.Address.NetworkType == "" {
+		r.Address.NetworkType = "tcp"
+	}
 	_, err := w.Write(buf.Bytes())
 	return err
 }

@@ -3,13 +3,12 @@ package trojan
 import (
 	"bytes"
 	"fmt"
+	"github.com/Dreamacro/clash/log"
 	"io"
 	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
-
-	"github.com/Dreamacro/clash/log"
 )
 
 type muxConn struct {
