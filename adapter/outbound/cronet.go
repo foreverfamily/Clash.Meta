@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -78,7 +77,7 @@ func (c *Cronet) ListenPacketOnStreamConn(con net.Conn, metadata *C.Metadata) (_
 // StreamConn implements C.ProxyAdapter
 func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error) {
 	headers := map[string]string{
-		"-connect-authority":  fmt.Sprintf("%s:%s", metadata.DstIP.String(), metadata.DstPort),
+		"-connect-authority":  metadata.RemoteAddress(),
 		"Padding":             generatePaddingHeader(),
 		"proxy-authorization": c.authorization,
 	}
@@ -94,12 +93,7 @@ func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error
 }
 
 func (c *Cronet) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	con, err := dialer.DialContext(ctx, "tcp", c.addr, c.Base.DialOptions(opts...)...)
-	if err != nil {
-		return nil, fmt.Errorf("%s connect error: %w", c.addr, err)
-	}
-	tcpKeepAlive(con)
-	con, err = c.StreamConn(con, metadata)
+	con, err := c.StreamConn(nil, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -110,11 +104,12 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 	engine := cronet.NewEngine()
 	fmt.Println("libcronet " + engine.Version())
 	params := cronet.NewEngineParams()
-	experimentalOptionsJSON, err := json.Marshal(option.ExperimentalOptions())
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-	params.SetExperimentalOptions(string(experimentalOptionsJSON))
+	//experimentalOptionsJSON, err := json.Marshal(option.ExperimentalOptions())
+	//if err != nil {
+	//	log.Fatalln(err.Error())
+	//}
+	//params.SetExperimentalOptions(string(experimentalOptionsJSON))
+	//params.ExperimentalOptions()
 	urlStr := "%s://%s:%s@%s:%d"
 	switch option.Network {
 	case "https", "http":
