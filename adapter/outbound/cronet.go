@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"github.com/sanity-io/litter"
 	"io"
 	"math/rand"
 	"net"
@@ -74,16 +75,25 @@ func (c *Cronet) ListenPacketOnStreamConn(con net.Conn, metadata *C.Metadata) (_
 	panic("implement me")
 }
 
+//error	http.log.error	lookup of invalid IP failed: lookup invalid IP: no such host
+//{"request": {"remote_ip": "183.134.99.132", "remote_port": "60198", "proto": "HTTP/2.0", "method": "CONNECT", "host": "invalid IP:80", "uri": "invalid IP:80",
+//"headers": {
+//"Proxy-Authorization": [],
+//"User-Agent": [""], "Padding": ["[^]]?<!<>><`+@#}~~~~~~~~~~~~~~~"]},
+//"tls": {"resumed": false, "version": 772, "cipher_suite": 4865, "proto": "h2", "server_name": "hk.lovechildrens.xyz"}},
+//"duration": 0.001539812, "status": 502, "err_id": "9qa9ptcd6", "err_trace": "forwardproxy.Handler.dialContextCheckACL (forwardproxy.go:495)"}
+
 // StreamConn implements C.ProxyAdapter
 func (c *Cronet) StreamConn(con net.Conn, metadata *C.Metadata) (net.Conn, error) {
 	headers := map[string]string{
 		"-connect-authority":  metadata.RemoteAddress(),
 		"Padding":             generatePaddingHeader(),
-		"proxy-authorization": c.authorization,
+		"Proxy-Authorization": c.authorization,
 	}
 	for key, value := range c.option.Headers {
 		headers[key] = value
 	}
+	log.Debugln("StreamConn: url = %s", litter.Sdump(headers))
 	bidiConn := c.streamEngine.CreateConn(true, false)
 	err := bidiConn.Start("CONNECT", c.url, headers, 0, false)
 	if err != nil {
@@ -123,7 +133,7 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 	default:
 		log.Fatalln("unknown proxy scheme: %s", option.Network)
 	}
-
+	log.Debugln("NewCronet: url = %s", urlStr)
 	proxyURL, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
@@ -134,7 +144,7 @@ func NewCronet(option CronetOption) (*Cronet, error) {
 		proxyAuthorization = "Basic " + base64.StdEncoding.EncodeToString([]byte(proxyURL.User.Username()+":"+password))
 		proxyURL.User = nil
 	}
-
+	log.Debugln("NewCronet: proxyURL = %s, proxyAuthorization = %s", litter.Sdump(proxyURL), proxyAuthorization)
 	engine.StartWithParams(params)
 	params.Destroy()
 
