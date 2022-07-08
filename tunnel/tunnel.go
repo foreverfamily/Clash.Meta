@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	P "github.com/Dreamacro/clash/component/process"
+	"github.com/sanity-io/litter"
 	"net"
 	"net/netip"
 	"path/filepath"
@@ -328,7 +329,7 @@ func handleTCPConn(connCtx C.ConnContext) {
 		if rule == nil {
 			log.Warnln("[TCP] dial %s to %s error: %s", proxy.Name(), metadata.RemoteAddress(), err.Error())
 		} else {
-			log.Warnln("[TCP] dial %s (match %s(%s)) to %s error: %s", proxy.Name(), rule.RuleType().String(), rule.Payload(), metadata.RemoteAddress(), err.Error())
+			log.Warnln("[TCP] dial %s (match %s(%s)) [%s] to %s error: %s; [%s]", proxy.Name(), rule.RuleType().String(), rule.Payload(), metadata.SourceDetail(), metadata.RemoteAddress(), err.Error(), litter.Sdump(metadata))
 		}
 		return
 	}
