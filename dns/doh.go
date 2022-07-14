@@ -3,14 +3,19 @@ package dns
 import (
 	"bytes"
 	"context"
-	"io"
-	"net"
-	"net/http"
-
+	"crypto/tls"
 	"github.com/Dreamacro/clash/component/dialer"
 	"github.com/Dreamacro/clash/component/resolver"
-
+	tls2 "github.com/Dreamacro/clash/component/tls"
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
 	D "github.com/miekg/dns"
+	"go.uber.org/atomic"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"strconv"
 )
 
 const (
@@ -19,9 +24,8 @@ const (
 )
 
 type dohClient struct {
-	url          string
-	proxyAdapter string
-	transport    *http.Transport
+	url       string
+	transport http.RoundTripper
 }
 
 func (dc *dohClient) Exchange(m *D.Msg) (msg *D.Msg, err error) {
@@ -63,28 +67,41 @@ func (dc *dohClient) newRequest(m *D.Msg) (*http.Request, error) {
 	return req, nil
 }
 
-func (dc *dohClient) doRequest(req *http.Request) (*D.Msg, error) {
+func (dc *dohClient) doRequest(req *http.Request) (msg *D.Msg, err error) {
 	client := &http.Client{Transport: dc.transport}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	msg := &D.Msg{}
+	msg = &D.Msg{}
 	err = msg.Unpack(buf)
 	return msg, err
 }
 
-func newDoHClient(url string, r *Resolver, proxyAdapter string) *dohClient {
+func newDoHClient(url string, r *Resolver, preferH3 bool, proxyAdapter string) *dohClient {
 	return &dohClient{
-		url:          url,
-		proxyAdapter: proxyAdapter,
-		transport: &http.Transport{
+		url:       url,
+		transport: newDohTransport(r, preferH3, proxyAdapter),
+	}
+}
+
+type dohTransport struct {
+	*http.Transport
+	h3       *http3.RoundTripper
+	preferH3 bool
+	canUseH3 atomic.Bool
+}
+
+func newDohTransport(r *Resolver, preferH3 bool, proxyAdapter string) *dohTransport {
+	dohT := &dohTransport{
+		Transport: &http.Transport{
 			ForceAttemptHTTP2: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				host, port, err := net.SplitHostPort(addr)
@@ -103,6 +120,83 @@ func newDoHClient(url string, r *Resolver, proxyAdapter string) *dohClient {
 					return dialContextExtra(ctx, proxyAdapter, "tcp", ip, port)
 				}
 			},
+			TLSClientConfig: tls2.GetDefaultTLSConfig(),
 		},
+		preferH3: preferH3,
 	}
+
+	dohT.canUseH3.Store(preferH3)
+	if preferH3 {
+		dohT.h3 = &http3.RoundTripper{
+			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+
+				ip, err := resolver.ResolveIPWithResolver(host, r)
+				if err != nil {
+					return nil, err
+				}
+				if proxyAdapter == "" {
+					return quic.DialAddrEarlyContext(ctx, net.JoinHostPort(ip.String(), port), tlsCfg, cfg)
+				} else {
+					if conn, err := dialContextExtra(ctx, proxyAdapter, "udp", ip, port); err == nil {
+						portInt, err := strconv.Atoi(port)
+						if err != nil {
+							return nil, err
+						}
+
+						udpAddr := net.UDPAddr{
+							IP:   net.ParseIP(ip.String()),
+							Port: portInt,
+						}
+
+						return quic.DialEarlyContext(ctx, conn.(net.PacketConn), &udpAddr, host, tlsCfg, cfg)
+					} else {
+						return nil, err
+					}
+				}
+			},
+			TLSClientConfig: tls2.GetDefaultTLSConfig(),
+		}
+	}
+
+	return dohT
+}
+
+func (doh *dohTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	var bodyBytes []byte
+	var h3Err bool
+	var fallbackErr bool
+	defer func() {
+		if doh.preferH3 && h3Err {
+			doh.canUseH3.Store(doh.preferH3 && fallbackErr)
+		}
+	}()
+
+	if req.Body != nil {
+		bodyBytes, err = ioutil.ReadAll(req.Body)
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewReader(bodyBytes))
+	if doh.preferH3 && doh.canUseH3.Load() {
+		resp, err = doh.h3.RoundTrip(req)
+		h3Err = err != nil
+		if !h3Err {
+			return resp, err
+		} else {
+			req.Body = ioutil.NopCloser(bytes.NewReader(bodyBytes))
+		}
+	}
+
+	resp, err = doh.Transport.RoundTrip(req)
+	fallbackErr = err != nil
+	if fallbackErr {
+		return resp, err
+	}
+
+	return resp, err
 }

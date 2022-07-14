@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	tlsC "github.com/Dreamacro/clash/component/tls"
 	"io"
 	"net"
 	"net/http"
@@ -51,6 +52,7 @@ type Option struct {
 	ALPN           []string
 	ServerName     string
 	SkipCertVerify bool
+	Fingerprint    string
 	Flow           string
 	FlowShow       bool
 }
@@ -81,6 +83,15 @@ func (t *Trojan) StreamConn(conn net.Conn) (net.Conn, error) {
 			ServerName:         t.option.ServerName,
 		}
 
+		if len(t.option.Fingerprint) == 0 {
+			xtlsConfig = tlsC.GetGlobalFingerprintXTLCConfig(xtlsConfig)
+		} else {
+			var err error
+			if xtlsConfig, err = tlsC.GetSpecifiedFingerprintXTLSConfig(xtlsConfig, t.option.Fingerprint); err != nil {
+				return nil, err
+			}
+		}
+
 		xtlsConn := xtls.Client(conn, xtlsConfig)
 
 		ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTLSTimeout)
@@ -96,6 +107,16 @@ func (t *Trojan) StreamConn(conn net.Conn) (net.Conn, error) {
 			InsecureSkipVerify: t.option.SkipCertVerify,
 			ServerName:         t.option.ServerName,
 		}
+
+		if len(t.option.Fingerprint) == 0 {
+			tlsConfig = tlsC.GetGlobalFingerprintTLCConfig(tlsConfig)
+		} else {
+			var err error
+			if tlsConfig, err = tlsC.GetSpecifiedFingerprintTLSConfig(tlsConfig, t.option.Fingerprint); err != nil {
+				return nil, err
+			}
+		}
+
 		tlsConn := tls.Client(conn, tlsConfig)
 		if err := tlsConn.Handshake(); err != nil {
 			return nil, err
