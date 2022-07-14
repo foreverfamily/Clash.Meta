@@ -276,3 +276,8 @@ func (c *PaddingConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := c.Read(b)
 	return n, c.rAddr, err
 }
+
+func (c *PaddingConn) Close() error {
+	log.Debugln("PaddingConn Close")
+	return nil
+}
